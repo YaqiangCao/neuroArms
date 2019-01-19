@@ -18,6 +18,8 @@ import tensorflow as tf
 import keras.backend as K
 from keras.optimizers import Adam
 from keras.models import load_model
+from keras.models import Sequential, Model
+from keras.layers import Flatten, Dense, Dropout
 from sklearn.utils import class_weight
 from sklearn.metrics import accuracy_score
 from sklearn.model_selection import train_test_split
@@ -39,7 +41,7 @@ os.environ["CUDA_VISIBLE_DEVICES"] = "0"
 
 # hyperparameters
 class hyperparameters:
-    num_classes = 2
+    num_classes = 1
     batch_size = 8
     learning_rate = 3 * 1e-4
     #last dim is channel
@@ -47,10 +49,10 @@ class hyperparameters:
     #dims = (496, 512, 1)
     dims = (224, 224, 1)
     weight_decay = 0.0005
-    train_steps = 200
-    #train_steps = 10
-    #epochs = 1
-    epochs = 30
+    #train_steps = 200
+    #epochs = 30
+    train_steps = 10
+    epochs = 1
 
 
 PARA = hyperparameters()
@@ -59,89 +61,114 @@ PARA = hyperparameters()
 def buildModel(name):
     if name == "vgg16":
         model = VGG16(
-            include_top=True,
+            include_top=False,
             weights=None,
             input_shape=PARA.dims,
-            pooling='avg',
+            #pooling='avg',
             classes=PARA.num_classes)
     if name == "vgg19":
         model = VGG19(
-            include_top=True,
+            include_top=False,
             weights=None,
             input_shape=PARA.dims,
-            pooling='avg',
+            #pooling='avg',
             classes=PARA.num_classes)
     if name == "nasnet":
         model = NASNet(
-            include_top=True,
+            include_top=False,
             weights=None,
             input_shape=PARA.dims,
-            pooling="avg",
+            #pooling="avg",
             classes=PARA.num_classes)
     if name == "inception":
         model = InceptionV3(
-            include_top=True,
+            include_top=False,
             weights=None,
             input_shape=PARA.dims,
-            pooling="avg",
+            #pooling="avg",
             classes=PARA.num_classes)
     if name == "resnet18":
-        model = ResNet18(PARA.dims, PARA.num_classes)
+        model = ResNet18(
+            PARA.dims,
+            PARA.num_classes,
+            include_top=False,
+        )
     if name == "resnet34":
-        model = ResNet34(PARA.dims, PARA.num_classes)
+        model = ResNet34(
+            PARA.dims,
+            PARA.num_classes,
+            include_top=False,
+        )
     if name == "resnet50":
-        model = ResNet50(PARA.dims, PARA.num_classes)
+        model = ResNet50(PARA.dims, PARA.num_classes, include_top=False)
     if name == "resnet101":
-        model = ResNet101(PARA.dims, PARA.num_classes)
+        model = ResNet101(PARA.dims, PARA.num_classes, include_top=False)
     if name == "resnet152":
-        model = ResNet152(PARA.dims, PARA.num_classes)
+        model = ResNet152(PARA.dims, PARA.num_classes, include_top=False)
     if name == "densenet40":
         model = DenseNet40(
             input_shape=PARA.dims,
             classes=PARA.num_classes,
-            include_top=True,
-            pooling="avg",
+            include_top=False,
+            #pooling="avg",
             weights=None)
     if name == "densenet121":
         model = DenseNet121(
             input_shape=PARA.dims,
             classes=PARA.num_classes,
-            include_top=True,
-            pooling="avg",
+            include_top=False,
+            #pooling="avg",
             weights=None)
     if name == "densenet161":
         model = DenseNet161(
             input_shape=PARA.dims,
             classes=PARA.num_classes,
-            include_top=True,
-            pooling="avg",
+            include_top=False,
+            #pooling="avg",
             weights=None)
     if name == "densenetI169":
         model = DenseNetI169(
             input_shape=PARA.dims,
             classes=PARA.num_classes,
-            include_top=True,
-            pooling="avg",
+            include_top=False,
+            #pooling="avg",
             weights=None)
     if name == "densenet201":
         model = DenseNet201(
             input_shape=PARA.dims,
             classes=PARA.num_classes,
-            include_top=True,
-            pooling="avg",
+            include_top=False,
+            #pooling="avg",
             weights=None)
     if name == "densenet264":
         model = DenseNet264(
             input_shape=PARA.dims,
             classes=PARA.num_classes,
-            include_top=True,
-            pooling="avg",
+            include_top=False,
+            #pooling="avg",
             weights=None)
+    #transfer learning part.
+    #model.layers.pop()
+    #model.outputs = [model.layers[-1].output]
+    #model.layers[-1].outbound_nodes = []
+    #model.add(Dense(units=1, name="dense_final"))
+    x = model.output
+    x = Flatten()(x)
+    x = Dense(64, activation="relu")(x)
+    x = Dropout(0.5)(x)
+    x = Dense(32, activation="relu")(x)
+    predictions = Dense(1, name="dense_final")(x)
+
+    # creating the final model
+    model = Model(input=model.input, output=predictions)
+
     model.compile(
-        loss="binary_crossentropy",
+        #loss="binary_crossentropy",
+        loss="mean_squared_error",
         #loss= "categorical_crossentropy",
         optimizer=Adam(lr=PARA.learning_rate),
-        metrics=['accuracy'],
+        #metrics=['accuracy'],
+        metrics=['mae', 'acc', "mse"],
     )
     return model
 
@@ -169,6 +196,21 @@ def getModel(name=None, checkpoint=None):
     return model, callbacks
 
 
+def readImg(f, norm=True, reshape=True):
+    img = Image.open(f)
+    if img.mode != 'L':
+        img = img.convert("L")
+    img = np.array(img.resize((PARA.dims[0], PARA.dims[1])))
+    if reshape:
+        img = img.reshape(PARA.dims[0], PARA.dims[1], 1)
+    if norm:
+        img = img / 255.0
+        std = np.std(img, ddof=1)
+        mean = np.mean(img)
+        img = (img - mean) / max(std, 1. / PARA.dims[0])
+    return img
+
+
 def getdata(f):
     x, y = [], []
     for line in open(f):
@@ -183,32 +225,17 @@ def getdata(f):
     return x_train, x_vali, x_test, y_train, y_vali, y_test
 
 
-def readImg(f):
-    img = Image.open(f)
-    if img.mode != 'L':
-        img = img.convert("L")
-    img = np.array(img.resize((PARA.dims[0], PARA.dims[1])))
-    img = img / 255.0
-    std = np.std(img, ddof=1)
-    mean = np.mean(img)
-    img = (img - mean) / max(std, 1. / PARA.dims[0])
-    img = img.reshape(PARA.dims[0], PARA.dims[1], 1)
-    #img = np.stack([img,img,img],axis=2)
-    return img
-
-
 def generator(features, labels, batch_size):
     batch_features = np.zeros((batch_size, PARA.dims[0], PARA.dims[1],
                                PARA.dims[2]))
-    batch_labels = np.zeros((batch_size, PARA.num_classes))
+    batch_labels = np.zeros(batch_size)
     while True:
         for i in range(batch_size):
             index = random.randint(0, len(features) - 1)
             x = readImg(features[index])
             if x is None:
                 continue
-            y = np.zeros(PARA.num_classes)
-            y[labels[index]] = 1
+            y = labels[index]
             batch_features[i] = x
             batch_labels[i] = y
         yield batch_features, batch_labels
@@ -216,9 +243,9 @@ def generator(features, labels, batch_size):
 
 def train(inputf, pre="base", blocks=7):
     x_train, x_vali, x_test, y_train, y_vali, y_test = getdata(inputf)
-    class_weights = class_weight.compute_class_weight("balanced",
-                                                      np.unique(y_train),
-                                                      y_train)
+    #class_weights = class_weight.compute_class_weight("balanced",
+    #                                                  np.unique(y_train),
+    #                                                  y_train)
     #print(x_train.shape, x_vali.shape, x_test.shape)
     #print(class_weights)
     stats = {}
@@ -243,7 +270,7 @@ def train(inputf, pre="base", blocks=7):
             steps_per_epoch=PARA.train_steps,
             shuffle=True,
             use_multiprocessing=True,
-            class_weight=class_weights,
+            #class_weight=class_weights,
             validation_data=generator(x_vali, y_vali, PARA.batch_size),
             validation_steps=20)
         K.clear_session()
@@ -290,31 +317,33 @@ def test(pref, model, sufix="", save=False):
         x.append(line[0])
         y.append(int(line[1]))
     model = load_model(model)
-    m = model.evaluate_generator(generator(x, y, PARA.batch_size), steps=120)
-    print("keras metrics", model.metrics_names, m)
     hist = {}
-    yps = []
-    for i, t in enumerate(x):
+    for i, t in enumerate(tqdm(x)):
         mat = readImg(t)
-        yp = model.predict(np.array([mat]))[0]
-        yps.append(np.argmax(yp))
-        flag = 0
-        if y[i] == np.argmax(yp):
-            flag = 1
-        hist[t] = {
-            "0_prob": yp[0],
-            "1_prob": yp[1],
-            "y_true": y[i],
-            "right": flag
-        }
-    acc = accuracy_score(y, yps)
-    print("sklearn metrics accuracy:", acc)
+        yp = model.predict(np.array([mat]))[0][0]
+        n = "_".join(t.split("_")[:-1])
+        #yp = np.rint(yp)
+        if n not in hist:
+            hist[n] = {"y_true": [], "y_pred": []}
+        hist[n]["y_true"].append(y[i])
+        hist[n]["y_pred"].append(yp)
+    yps = []
+    yts = []
+    for key in hist.keys():
+        yp = np.rint(np.mean(hist[key]["y_pred"]))
+        yt = np.rint(np.mean(hist[key]["y_true"]))
+        #print(key,yt,yp)
+        yps.append(yp)
+        yts.append(yt)
+        hist[key]["y_pred"] = yp
+        hist[key]["y_true"] = yt
+    acc = mean_absolute_error(yts, yps)
+    print("sklearn metrics accuracy MAE", acc)
     hist = pd.DataFrame(hist).T
     if save:
         hist.to_csv("%s_prob.txt" % sufix, sep="\t")
 
 
-train("disc.txt", pre="disc")
-train("macula.txt", pre="macula")
-#test("disc.txt","models/disc_densenet.h5","disc_dense",True)
-#test("macula.txt","models/macula_densenet.h5","macula_dense",True)
+#train("label.txt")
+train("label.txt", pre="base")
+#test("label.txt", "base.h5", "test", True)
