@@ -19,7 +19,7 @@ import keras.backend as K
 from keras.optimizers import Adam
 from keras.models import load_model
 from keras.models import Sequential, Model
-from keras.layers import Flatten, Dense, Dropout
+from keras.layers import Flatten,Dense,Dropout
 from sklearn.utils import class_weight
 from sklearn.metrics import accuracy_score
 from sklearn.model_selection import train_test_split
@@ -42,7 +42,7 @@ os.environ["CUDA_VISIBLE_DEVICES"] = "0"
 # hyperparameters
 class hyperparameters:
     num_classes = 1
-    batch_size = 8
+    batch_size = 128
     learning_rate = 3 * 1e-4
     #last dim is channel
     #dims = (992, 1024, 1) #raw size, small image perfomrce better
@@ -51,8 +51,10 @@ class hyperparameters:
     weight_decay = 0.0005
     #train_steps = 200
     #epochs = 30
-    train_steps = 10
+    train_steps = 1
     epochs = 1
+    #train_steps = 800
+    #epochs = 50
 
 
 PARA = hyperparameters()
@@ -88,23 +90,21 @@ def buildModel(name):
             #pooling="avg",
             classes=PARA.num_classes)
     if name == "resnet18":
-        model = ResNet18(
-            PARA.dims,
+        model = ResNet18(PARA.dims,
             PARA.num_classes,
             include_top=False,
-        )
+            )
     if name == "resnet34":
-        model = ResNet34(
-            PARA.dims,
+        model = ResNet34(PARA.dims, 
             PARA.num_classes,
             include_top=False,
-        )
+            )
     if name == "resnet50":
-        model = ResNet50(PARA.dims, PARA.num_classes, include_top=False)
+        model = ResNet50(PARA.dims, PARA.num_classes,include_top=False)
     if name == "resnet101":
-        model = ResNet101(PARA.dims, PARA.num_classes, include_top=False)
+        model = ResNet101(PARA.dims, PARA.num_classes,include_top=False)
     if name == "resnet152":
-        model = ResNet152(PARA.dims, PARA.num_classes, include_top=False)
+        model = ResNet152(PARA.dims, PARA.num_classes,include_top=False)
     if name == "densenet40":
         model = DenseNet40(
             input_shape=PARA.dims,
@@ -157,10 +157,10 @@ def buildModel(name):
     x = Dense(64, activation="relu")(x)
     x = Dropout(0.5)(x)
     x = Dense(32, activation="relu")(x)
-    predictions = Dense(1, name="dense_final")(x)
+    predictions = Dense(1,name="dense_final" )(x)
 
-    # creating the final model
-    model = Model(input=model.input, output=predictions)
+    # creating the final model 
+    model = Model(input = model.input, output = predictions)
 
     model.compile(
         #loss="binary_crossentropy",
@@ -168,7 +168,7 @@ def buildModel(name):
         #loss= "categorical_crossentropy",
         optimizer=Adam(lr=PARA.learning_rate),
         #metrics=['accuracy'],
-        metrics=['mae', 'acc', "mse"],
+        metrics=['mae', 'acc',"mse"],
     )
     return model
 
@@ -225,6 +225,7 @@ def getdata(f):
     return x_train, x_vali, x_test, y_train, y_vali, y_test
 
 
+
 def generator(features, labels, batch_size):
     batch_features = np.zeros((batch_size, PARA.dims[0], PARA.dims[1],
                                PARA.dims[2]))
@@ -250,13 +251,8 @@ def train(inputf, pre="base", blocks=7):
     #print(class_weights)
     stats = {}
     for name in [
-            "vgg16",
-            "vgg19",
-            "nasnet",
-            "inception",
-            "resnet18",
-            "resnet34",
-            "densenet40",
+            #"vgg16", "vgg19", "nasnet", "inception", 
+            "resnet18", "resnet34","densenet40",
             #"resnet50", "resnet101", "resnet152", "densenet40", "densenet121",
             #"densenet161", "densenetI169", "densenet201", "densenet264"
     ]:
@@ -295,18 +291,15 @@ def train(inputf, pre="base", blocks=7):
         mtest = model.evaluate_generator(
             generator(x_test, y_test, PARA.batch_size), steps=20)
         print("keras metrics", model.metrics_names, mtest)
-        stats[name] = {
-            "train_loss": mtrain[0],
-            "train_acc": mtrain[1],
-            "vali_loss": mvali[0],
-            "vali_acc": mvali[1],
-            "test_loss": mtest[0],
-            "test_acc": mtest[1],
-        }
+        stats[name] = { 
+                "train_loss": mtrain[0],"train_acc":mtrain[1],
+                "vali_loss": mvali[0],"vali_acc":mvali[1],
+                "test_loss": mtest[0],"test_acc":mtest[1],
+                }
         print("------\n" * 3)
         K.clear_session()
     stats = pd.DataFrame(stats).T
-    stats.to_csv(pre + "_model_loss_acc.txt", sep="\t")
+    stats.to_csv(pre+"_model_loss_acc.txt",sep="\t")
 
 
 def test(pref, model, sufix="", save=False):
@@ -345,5 +338,5 @@ def test(pref, model, sufix="", save=False):
 
 
 #train("label.txt")
-train("label.txt", pre="base")
+train("label.txt",pre="base")
 #test("label.txt", "base.h5", "test", True)

@@ -422,16 +422,16 @@ def ResNet(input_shape=None, classes=10, block='bottleneck', residual_unit='v2',
     return model
 
 
-def ResNet18(input_shape, classes):
+def ResNet18(input_shape, classes,include_top=True):
     """ResNet with 18 layers and v2 residual units
     """
-    return ResNet(input_shape, classes, basic_block, repetitions=[2, 2, 2, 2])
+    return ResNet(input_shape, classes, basic_block,include_top=include_top, repetitions=[2, 2, 2, 2])
 
 
-def ResNet34(input_shape, classes):
+def ResNet34(input_shape, classes,include_top=True):
     """ResNet with 34 layers and v2 residual units
     """
-    return ResNet(input_shape, classes, basic_block, repetitions=[3, 4, 6, 3])
+    return ResNet(input_shape, classes, basic_block,include_top=include_top, repetitions=[3, 4, 6, 3])
 
 
 def ResNet50(input_shape, classes):
