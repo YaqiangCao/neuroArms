@@ -31,7 +31,9 @@ TF_WEIGHTS_PATH_NO_TOP = 'https://github.com/titu1994/Wide-Residual-Networks/rel
 
 
 def WideResidualNetwork(depth=28, width=8, dropout_rate=0.0,
-                        include_top=True, weights='cifar10',
+                        include_top=True, 
+                        #weights='cifar10',
+                        weights=None,
                         input_tensor=None, input_shape=None,
                         classes=10, activation='softmax'):
     """Instantiate the Wide Residual Network architecture,

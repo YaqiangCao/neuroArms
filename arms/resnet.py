@@ -434,19 +434,19 @@ def ResNet34(input_shape, classes,include_top=True):
     return ResNet(input_shape, classes, basic_block,include_top=include_top, repetitions=[3, 4, 6, 3])
 
 
-def ResNet50(input_shape, classes):
+def ResNet50(input_shape, classes,include_top=True):
     """ResNet with 50 layers and v2 residual units
     """
-    return ResNet(input_shape, classes, bottleneck, repetitions=[3, 4, 6, 3])
+    return ResNet(input_shape, classes, bottleneck,include_top=include_top, repetitions=[3, 4, 6, 3])
 
 
-def ResNet101(input_shape, classes):
+def ResNet101(input_shape, classes,include_top=True):
     """ResNet with 101 layers and v2 residual units
     """
-    return ResNet(input_shape, classes, bottleneck, repetitions=[3, 4, 23, 3])
+    return ResNet(input_shape, classes, bottleneck, include_top=include_top, repetitions=[3, 4, 23, 3])
 
 
-def ResNet152(input_shape, classes):
+def ResNet152(input_shape, classes,include_top=True):
     """ResNet with 152 layers and v2 residual units
     """
-    return ResNet(input_shape, classes, bottleneck, repetitions=[3, 8, 36, 3])
+    return ResNet(input_shape, classes, bottleneck, include_top=include_top,repetitions=[3, 8, 36, 3])

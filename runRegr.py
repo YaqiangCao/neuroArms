@@ -1,5 +1,7 @@
 # coding: utf-8
 """
+2019-01-24: running time record added
+2019-01-24: model selection added
 
 """
 
@@ -7,6 +9,7 @@
 import os, random
 from glob import glob
 from copy import deepcopy
+from datetime import datetime
 
 #3rd
 import h5py
@@ -21,7 +24,7 @@ from keras.models import load_model
 from keras.models import Sequential, Model
 from keras.layers import Flatten, Dense, Dropout, BatchNormalization
 from sklearn.utils import class_weight
-from sklearn.metrics import accuracy_score
+from sklearn.metrics import accuracy_score, mean_absolute_error, mean_squared_error
 from sklearn.model_selection import train_test_split
 from keras.utils import multi_gpu_model
 from keras.callbacks import ModelCheckpoint, ReduceLROnPlateau
@@ -31,20 +34,22 @@ from arms.nasnet import NASNet
 from arms.vgg19 import VGG19  #img_rows 224,img_cols 224,channel 3,num_classes if fine-tune,else could be adjusted
 from arms.vgg16 import VGG16  #img_rows 224,img_cols 224,channel 3,num_classes
 from arms.inception_v3 import InceptionV3
+from arms.xception import Xception
+from arms.wide_resnet import WideResidualNetwork
 from arms.resnet import ResNet18, ResNet34, ResNet50, ResNet101, ResNet152
 from arms.densenet import DenseNet40, DenseNet121, DenseNet161, DenseNetI169, DenseNet201, DenseNet264
 
 #global settings for tensorflow
 os.environ["CUDA_DEVICE_ORDER"] = "PCI_BUS_ID"
 os.environ["TF_CPP_MIN_LOG_LEVEL"] = '3'
-#os.environ["CUDA_VISIBLE_DEVICES"] = "0,1"
-os.environ["CUDA_VISIBLE_DEVICES"] = "1,2,3"
+#os.environ["CUDA_VISIBLE_DEVICES"] = "0"
+os.environ["CUDA_VISIBLE_DEVICES"] = "0,1,2"
 
 
 # hyperparameters
 class hyperparameters:
     num_classes = 1
-    batch_size = 64
+    batch_size = 32
     learning_rate = 3 * 1e-4
     #last dim is channel
     #dims = (992, 1024, 1) #raw size, small image perfomrce better
@@ -53,14 +58,18 @@ class hyperparameters:
     weight_decay = 0.0005
     #train_steps = 200
     #epochs = 30
-    #train_steps = 1
-    #epochs = 1
-    train_steps = 2700
-    epochs = 20
+    train_steps = 1
+    epochs = 1
+    #train_steps = 150
+    #epochs = 50
     gpus = 3
 
 
 PARA = hyperparameters()
+
+
+def huber_loss(y_true, y_pred):
+    return tf.losses.huber_loss(y_true, y_pred)
 
 
 def buildModel(name):
@@ -92,6 +101,13 @@ def buildModel(name):
             input_shape=PARA.dims,
             #pooling="avg",
             classes=PARA.num_classes)
+    if name == "xception":
+        model = Xception(
+            include_top=False,
+            weights=None,
+            input_shape=PARA.dims,
+            #pooling="avg",
+            classes=PARA.num_classes)
     if name == "resnet18":
         model = ResNet18(
             PARA.dims,
@@ -110,6 +126,9 @@ def buildModel(name):
         model = ResNet101(PARA.dims, PARA.num_classes, include_top=False)
     if name == "resnet152":
         model = ResNet152(PARA.dims, PARA.num_classes, include_top=False)
+    if name == "wideresnet":
+        model = WideResidualNetwork(
+            input_shape=PARA.dims, classes=PARA.num_classes, include_top=False)
     if name == "densenet40":
         model = DenseNet40(
             input_shape=PARA.dims,
@@ -272,16 +291,21 @@ def train(pre="base"):
     #print(class_weights)
     stats = {}
     for name in [
-            "vgg16",
-            "vgg19",
-            "nasnet",
-            "inception",
-            "resnet18",
-            "resnet34",
-            "densenet40",
-            #"resnet50", "resnet101", "resnet152", "densenet40", "densenet121",
+            #"vgg16",
+            #"vgg19",
+            #"nasnet",
+            #"inception",
+            #"resnet18",
+            #"resnet34",
+            #"resnet50",
+            #"resnet101",
+            #"wideresnet",
+            "xception",
+            #"densenet40",
+            #"densenet121",
             #"densenet161", "densenetI169", "densenet201", "densenet264"
     ]:
+        s = datetime.now()
         cp = "models/%s_%s.h5" % (pre, name)
         print("starting ", name, cp)
         model, callbacks = getModel(name, cp)
@@ -294,8 +318,9 @@ def train(pre="base"):
             use_multiprocessing=True,
             #class_weight=class_weights,
             validation_data=generator(x_vali, y_vali, PARA.batch_size),
-            validation_steps=330)
+            validation_steps=15)
         K.clear_session()
+        usedTime = datetime.now() - s
         hist = pd.DataFrame(hist.history)
         hist.to_csv(
             "models/%s_%s_trainningHistroy.txt" % (pre, name),
@@ -307,15 +332,15 @@ def train(pre="base"):
         model = load_model(cp)
         print("train data")
         mtrain = model.evaluate_generator(
-            generator(x_train, y_train, PARA.batch_size), steps=2600)
+            generator(x_train, y_train, PARA.batch_size), steps=150)
         print("keras metrics", model.metrics_names, mtrain)
         print("vali data")
         mvali = model.evaluate_generator(
-            generator(x_vali, y_vali, PARA.batch_size), steps=330)
+            generator(x_vali, y_vali, PARA.batch_size), steps=15)
         print("keras metrics", model.metrics_names, mvali)
         print("test data")
         mtest = model.evaluate_generator(
-            generator(x_test, y_test, PARA.batch_size), steps=330)
+            generator(x_test, y_test, PARA.batch_size), steps=15)
         print("keras metrics", model.metrics_names, mtest)
         stats[name] = {
             "train_loss": mtrain[0],
@@ -327,8 +352,9 @@ def train(pre="base"):
             "test_loss": mtest[0],
             "test_mae": mtest[1],
             "test_mse": mtest[2],
+            "trainning_time": usedTime,
         }
-        print("------\n" * 3)
+        print("------\n" * 2)
         K.clear_session()
     stats = pd.DataFrame(stats).T
     stats.to_csv(pre + "_model_loss_acc.txt", sep="\t")
@@ -340,11 +366,19 @@ def test(pref, model, sufix="", save=False):
     for line in open(pref):
         line = line.split("\n")[0].split("\t")
         x.append(line[0])
-        y.append(int(line[1]))
+        try:
+            y.append(int(line[1]))
+        except:
+            y.append(0)
+    x = x[:10000]
+    y = y[:10000]
     model = load_model(model)
     hist = {}
     for i, t in enumerate(tqdm(x)):
-        mat = readImg(t)
+        try:
+            mat = readImg(t)
+        except:
+            continue
         yp = model.predict(np.array([mat]))[0][0]
         n = "_".join(t.split("_")[:-1])
         #yp = np.rint(yp)
@@ -362,12 +396,14 @@ def test(pref, model, sufix="", save=False):
         yts.append(yt)
         hist[key]["y_pred"] = yp
         hist[key]["y_true"] = yt
-    acc = mean_absolute_error(yts, yps)
-    print("sklearn metrics accuracy MAE", acc)
+    mae = mean_absolute_error(yts, yps)
+    print("sklearn metrics accuracy MAE", mae)
+    mse = mean_squared_error(yts, yps)
+    print("sklearn metrics accuracy MSE", mse)
     hist = pd.DataFrame(hist).T
     if save:
         hist.to_csv("%s_prob.txt" % sufix, sep="\t")
+    K.clear_session()
 
 
 train(pre="base")
-#test("label.txt", "base.h5", "test", True)

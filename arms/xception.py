@@ -40,15 +40,16 @@ from keras.engine.topology import get_source_inputs
 from keras.utils.data_utils import get_file
 from keras import backend as K
 from keras.applications.imagenet_utils import decode_predictions
-from keras.applications.imagenet_utils import _obtain_input_shape
 
 
 TF_WEIGHTS_PATH = 'https://github.com/fchollet/deep-learning-models/releases/download/v0.4/xception_weights_tf_dim_ordering_tf_kernels.h5'
 TF_WEIGHTS_PATH_NO_TOP = 'https://github.com/fchollet/deep-learning-models/releases/download/v0.4/xception_weights_tf_dim_ordering_tf_kernels_notop.h5'
 
 
-def Xception(include_top=True, weights='imagenet',
-             input_tensor=None, input_shape=None,
+def Xception(include_top=True, 
+            #weights='imagenet',
+            weights=None,
+             input_shape=None,
              pooling=None,
              classes=1000):
     """Instantiates the Xception architecture.
@@ -126,20 +127,8 @@ def Xception(include_top=True, weights='imagenet',
     else:
         old_data_format = None
 
-    # Determine proper input shape
-    input_shape = _obtain_input_shape(input_shape,
-                                      default_size=299,
-                                      min_size=71,
-                                      data_format=K.image_data_format(),
-                                      include_top=include_top)
 
-    if input_tensor is None:
-        img_input = Input(shape=input_shape)
-    else:
-        if not K.is_keras_tensor(input_tensor):
-            img_input = Input(tensor=input_tensor, shape=input_shape)
-        else:
-            img_input = input_tensor
+    img_input = Input(shape=input_shape)
 
     x = Conv2D(32, (3, 3), strides=(2, 2), use_bias=False, name='block1_conv1')(img_input)
     x = BatchNormalization(name='block1_conv1_bn')(x)
@@ -238,10 +227,7 @@ def Xception(include_top=True, weights='imagenet',
 
     # Ensure that the model takes into account
     # any potential predecessors of `input_tensor`.
-    if input_tensor is not None:
-        inputs = get_source_inputs(input_tensor)
-    else:
-        inputs = img_input
+    inputs = img_input
     # Create model.
     model = Model(inputs, x, name='xception')
 
