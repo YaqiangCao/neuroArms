@@ -102,7 +102,7 @@ def buildModel(name):
             classes=PARA.num_classes)
     if name == "xception":
         model = Xception(
-            include_top=False,
+            include_top=True,
             weights=None,
             input_shape=PARA.dims,
             #pooling="avg",
@@ -133,42 +133,42 @@ def buildModel(name):
             input_shape=PARA.dims,
             classes=PARA.num_classes,
             include_top=True,
-            #pooling="avg",
+            pooling="avg",
             weights=None)
     if name == "densenet121":
         model = DenseNet121(
             input_shape=PARA.dims,
             classes=PARA.num_classes,
             include_top=True,
-            #pooling="avg",
+            pooling="avg",
             weights=None)
     if name == "densenet161":
         model = DenseNet161(
             input_shape=PARA.dims,
             classes=PARA.num_classes,
             include_top=True,
-            #pooling="avg",
+            pooling="avg",
             weights=None)
     if name == "densenetI169":
         model = DenseNetI169(
             input_shape=PARA.dims,
             classes=PARA.num_classes,
             include_top=True,
-            #pooling="avg",
+            pooling="avg",
             weights=None)
     if name == "densenet201":
         model = DenseNet201(
             input_shape=PARA.dims,
             classes=PARA.num_classes,
             include_top=True,
-            #pooling="avg",
+            pooling="avg",
             weights=None)
     if name == "densenet264":
         model = DenseNet264(
             input_shape=PARA.dims,
             classes=PARA.num_classes,
             include_top=True,
-            #pooling="avg",
+            pooling="avg",
             weights=None)
 
     # use multiple GPU
@@ -268,8 +268,6 @@ def generator(features, labels, batch_size):
 
 def train(pre="base"):
     x_train, y_train = getdata("trainF.txt")
-    print(x_train[:10])
-    print(y_train[:10])
     x_vali, y_vali = getdata("valiF.txt")
     x_test, y_test = getdata("testF.txt")
     #x_train, x_vali, x_test, y_train, y_vali, y_test = getdata(inputf)
@@ -280,16 +278,16 @@ def train(pre="base"):
     #print(class_weights)
     stats = {}
     for name in [
-            "vgg16",
-            "vgg19",
+            #"vgg16",
+            #"vgg19",
             #"nasnet",
-            "inception",
-            "resnet18",
-            "resnet34",
-            "resnet50",
-            "resnet101",
+            #"inception",
+            #"resnet18",
+            #"resnet34",
+            #"resnet50",
+            #"resnet101",
             #"wideresnet",
-            "xception",
+            #"xception",
             "densenet40",
             "densenet121",
             "densenet161", 
@@ -318,7 +316,6 @@ def train(pre="base"):
             "models/%s_%s_trainningHistroy.txt" % (pre, name),
             sep="\t",
             index_label="epoch")
-        #print("------\n" * 3)
         print(name, cp)
         print("final metrics as following, used time:%s"%usedTime)
         model = load_model(cp)
