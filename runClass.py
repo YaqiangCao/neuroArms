@@ -43,25 +43,26 @@ from arms.densenet import DenseNet40, DenseNet121, DenseNet161, DenseNetI169, De
 #global settings for tensorflow
 os.environ["CUDA_DEVICE_ORDER"] = "PCI_BUS_ID"
 os.environ["TF_CPP_MIN_LOG_LEVEL"] = '3'
-#os.environ["CUDA_VISIBLE_DEVICES"] = "0"
-os.environ["CUDA_VISIBLE_DEVICES"] = "2,3"
+os.environ["CUDA_VISIBLE_DEVICES"] = "0"
+
+#os.environ["CUDA_VISIBLE_DEVICES"] = "3"
 
 
 # hyperparameters
 class hyperparameters:
-    num_classes = 21
-    batch_size = 32
+    num_classes = 22
+    batch_size = 32 
     learning_rate = 3 * 1e-4
     #last dim is channel
     #dims = (992, 1024, 1) #raw size, small image perfomrce better
     #dims = (496, 512, 1)
     dims = (224, 224, 1)
     weight_decay = 0.0005
-    train_steps = 200
-    vali_steps = 20
-    test_steps = 20
-    epochs = 30
-    gpus = 2
+    train_steps = 1560 / 2
+    vali_steps = 156 / 2
+    test_steps = 156 / 2
+    epochs = 10
+    gpus = 1
 
 
 PARA = hyperparameters()
@@ -172,14 +173,14 @@ def buildModel(name):
             weights=None)
 
     # use multiple GPU
-    model = multi_gpu_model(model, gpus=PARA.gpus)
+    #model = multi_gpu_model(model, gpus=PARA.gpus)
     model.compile(
         loss="binary_crossentropy",
         #loss="mean_absolute_error",
         #loss= "categorical_crossentropy",
         optimizer=Adam(lr=PARA.learning_rate),
-        #metrics=['accuracy'],
-        metrics=['mae', "mse","acc"],
+        metrics=['accuracy'],
+        #metrics=['mae', "mse","acc"],
     )
     return model
 
@@ -236,7 +237,7 @@ def getdata(f):
         except:
             continue
         x.append(line[0])
-        y.append(int(line[1])+1) 
+        y.append(int(line[1]) + 1)
     x, y = np.array(x), np.array(y)
     return x, y
     """
@@ -266,8 +267,27 @@ def generator(features, labels, batch_size):
         yield batch_features, batch_labels
 
 
+def getStat(model, x, y):
+    #model = load_model(model)
+    yps = []
+    #for i, t in enumerate(tqdm(x)):
+    for t in x:
+        mat = readImg(t)
+        yp = model.predict(np.array([mat]))[0]
+        yp = np.argmax(yp)
+        yps.append(yp)
+    mae = mean_absolute_error(y, yps)
+    #print("sklearn metrics accuracy MAE", mae)
+    mse = mean_squared_error(y, yps)
+    #print("sklearn metrics accuracy MSE", mse)
+    acc = accuracy_score(y, yps)
+    #print("sklearn metrics accuracy acc", acc)
+    return mae, mse, acc
+
+
 def train(pre="base"):
     x_train, y_train = getdata("trainF.txt")
+    PARA.num_classes = np.max(y_train) + 1
     x_vali, y_vali = getdata("valiF.txt")
     x_test, y_test = getdata("testF.txt")
     #x_train, x_vali, x_test, y_train, y_vali, y_test = getdata(inputf)
@@ -278,21 +298,21 @@ def train(pre="base"):
     #print(class_weights)
     stats = {}
     for name in [
-            #"vgg16",
-            #"vgg19",
+            "vgg16",
+            "vgg19",
             #"nasnet",
-            #"inception",
-            #"resnet18",
-            #"resnet34",
-            #"resnet50",
-            #"resnet101",
+            "inception",
+            "resnet18",
+            "resnet34",
+            "resnet50",
+            "resnet101",
             #"wideresnet",
-            #"xception",
+            "xception",
             "densenet40",
             "densenet121",
-            "densenet161", 
-            "densenetI169", 
-            "densenet201", 
+            "densenet161",
+            "densenetI169",
+            "densenet201",
             "densenet264"
     ]:
         s = datetime.now()
@@ -317,33 +337,39 @@ def train(pre="base"):
             sep="\t",
             index_label="epoch")
         print(name, cp)
-        print("final metrics as following, used time:%s"%usedTime)
+        print("final metrics as following, used time:%s" % usedTime)
         model = load_model(cp)
         print("train data")
-        mtrain = model.evaluate_generator(
-            generator(x_train, y_train, PARA.batch_size), steps=PARA.train_steps)
-        print("keras metrics", model.metrics_names, mtrain)
+        mtrain = getStat(
+            model,
+            x_train,
+            y_train,
+        )
+        print("keras metrics: [MAE,MSE,ACC]", mtrain)
         print("vali data")
-        mvali = model.evaluate_generator(
-            generator(x_vali, y_vali, PARA.batch_size), steps=PARA.vali_steps)
-        print("keras metrics", model.metrics_names, mvali)
+        mvali = getStat(
+            model,
+            x_vali,
+            y_vali,
+        )
+        print("keras metrics: [MAE,MSE,ACC]", mvali)
         print("test data")
-        mtest = model.evaluate_generator(
-            generator(x_test, y_test, PARA.batch_size), steps=PARA.test_steps)
-        print("keras metrics", model.metrics_names, mtest)
+        mtest = getStat(
+            model,
+            x_test,
+            y_test,
+        )
+        print("keras metrics:[MAE,MSE,ACC]", mtest)
         stats[name] = {
-            "train_loss": mtrain[0],
-            "train_mae": mtrain[1],
-            "train_mse": mtrain[2],
-            "train_acc": mtrain[3],
-            "vali_loss": mvali[0],
-            "vali_mae": mvali[1],
-            "vali_mse": mvali[2],
-            "vali_acc": mvali[3],
-            "test_loss": mtest[0],
-            "test_mae": mtest[1],
-            "test_mse": mtest[2],
-            "test_acc": mtest[3],
+            "train_mae": mtrain[0],
+            "train_mse": mtrain[1],
+            "train_acc": mtrain[2],
+            "vali_mae": mvali[0],
+            "vali_mse": mvali[1],
+            "vali_acc": mvali[2],
+            "test_mae": mtest[0],
+            "test_mse": mtest[1],
+            "test_acc": mtest[2],
             "trainning_time": usedTime,
         }
         print("------\n" * 2)
@@ -357,21 +383,23 @@ def test(pref, model, sufix="", save=False):
     x, y = [], []
     for line in open(pref):
         line = line.split("\n")[0].split("\t")
-        x.append(line[0])
+        if len(line) != 2:
+            continue
         try:
+            x.append(line[0])
             y.append(int(line[1]))
         except:
-            y.append(0)
-    x = x[:10000]
-    y = y[:10000]
+            continue
+    #x = x[:100]
+    #y = y[:100]
     model = load_model(model)
     hist = {}
     for i, t in enumerate(tqdm(x)):
-        try:
-            mat = readImg(t)
-        except:
-            continue
-        yp = model.predict(np.array([mat]))[0][0]
+        #for i, t in enumerate(x):
+        mat = readImg(t)
+        yp = model.predict(np.array([mat]))[0]
+        #print(yp)
+        yp = np.argmax(yp) - 1
         n = "_".join(t.split("_")[:-1])
         #yp = np.rint(yp)
         if n not in hist:
@@ -386,16 +414,60 @@ def test(pref, model, sufix="", save=False):
         #print(key,yt,yp)
         yps.append(yp)
         yts.append(yt)
-        hist[key]["y_pred"] = yp
+        hist[key]["y_pred_mean"] = yp
         hist[key]["y_true"] = yt
     mae = mean_absolute_error(yts, yps)
     print("sklearn metrics accuracy MAE", mae)
     mse = mean_squared_error(yts, yps)
     print("sklearn metrics accuracy MSE", mse)
+    acc = accuracy_score(yts, yps)
+    print("sklearn metrics accuracy acc", acc)
     hist = pd.DataFrame(hist).T
     if save:
         hist.to_csv("%s_prob.txt" % sufix, sep="\t")
     K.clear_session()
 
 
-train(pre="base")
+def test2(pref, model, sufix="", save=False):
+    print(pref)
+    x, y = [], []
+    for line in open(pref):
+        line = line.split("\n")[0].split("\t")
+        if len(line) != 2:
+            continue
+        try:
+            x.append(line[0])
+            y.append(int(line[1]) + 1)
+        except:
+            continue
+    model = load_model(model)
+    yps = []
+    hist = {}
+    for i, t in enumerate(tqdm(x)):
+        try:
+            mat = readImg(t)
+        except:
+            continue
+        yp = model.predict(np.array([mat]))[0]
+        yp = np.argmax(yp)
+        yps.append(yp)
+        hist[t] = {"y_pred": yp, "y_true": y[i]}
+    mae = mean_absolute_error(y, yps)
+    print("sklearn metrics accuracy MAE", mae)
+    mse = mean_squared_error(y, yps)
+    print("sklearn metrics accuracy MSE", mse)
+    acc = accuracy_score(y, yps)
+    print("sklearn metrics accuracy acc", acc)
+    hist = pd.DataFrame(hist).T
+    if save:
+        hist.to_csv("%s_prob.txt" % sufix, sep="\t")
+    K.clear_session()
+
+
+train(pre="MYL_BCE")
+"""
+test("valiF.txt", "models/BCE_vgg16.h5", "BCE_vgg16_valiF", True)
+test("testF.txt", "models/BCE_vgg16.h5", "BCE_vgg16_testF", True)
+test2("valiF.txt", "models/BCE_vgg16.h5", "BCE_vgg16_valiF_2", True)
+test2("testF.txt", "models/BCE_vgg16.h5", "BCE_vgg16_testF_2", True)
+"""
