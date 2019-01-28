@@ -41,25 +41,24 @@ from arms.densenet import DenseNet40, DenseNet121, DenseNet161, DenseNetI169, De
 #global settings for tensorflow
 os.environ["CUDA_DEVICE_ORDER"] = "PCI_BUS_ID"
 os.environ["TF_CPP_MIN_LOG_LEVEL"] = '3'
-os.environ["CUDA_VISIBLE_DEVICES"] = "1"
-#os.environ["CUDA_VISIBLE_DEVICES"] = "3"
+os.environ["CUDA_VISIBLE_DEVICES"] = "0,1"
 
 
 # hyperparameters
 class hyperparameters:
     num_classes = 1
-    batch_size = 32 * 2
+    batch_size = 32 * 4
     learning_rate = 3 * 1e-4
     #last dim is channel
     #dims = (992, 1024, 1) #raw size, small image perfomrce better
     #dims = (496, 512, 1)
     dims = (224, 224, 1)
     weight_decay = 0.0005
-    train_steps = 1560 / 4
-    vali_steps = 156 / 4
-    test_steps = 156 / 4
-    epochs = 10
-    gpus = 1
+    train_steps = 11000 / 4
+    vali_steps = 300 / 4
+    test_steps = 300 / 4
+    epochs = 50
+    gpus = 2
 
 
 PARA = hyperparameters()
@@ -187,7 +186,7 @@ def buildModel(name):
     # creating the final model
     model = Model(input=model.input, output=predictions)
     # use multiple GPU
-    #model = multi_gpu_model(model, gpus=PARA.gpus)
+    model = multi_gpu_model(model, gpus=PARA.gpus)
     model.compile(
         loss=huber_loss,
         optimizer=Adam(lr=PARA.learning_rate),
@@ -239,8 +238,6 @@ def getdata(f):
     x, y = [], []
     for line in open(f):
         line = line.split("\n")[0].split("\t")
-        if "images_aug" in line:
-            continue
         if len(line) != 2:
             continue
         try:
@@ -282,23 +279,26 @@ def getStat(model, x, y):
     #for i, t in enumerate(tqdm(x)):
     for t in x:
         mat = readImg(t)
-        yp = model.predict(np.array([mat]))[0]
+        yp = model.predict(np.array([mat]))[0][0]
         #yp = np.argmax(yp)
         yps.append(yp)
     mae = mean_absolute_error(y, yps)
     #print("sklearn metrics accuracy MAE", mae)
     mse = mean_squared_error(y, yps)
     #print("sklearn metrics accuracy MSE", mse)
-    nyps = [ np.rint(yp) for yp in yps]
+    nyps = [np.rint(yp) for yp in yps]
     acc = accuracy_score(y, nyps)
     #print("sklearn metrics accuracy acc", acc)
     return mae, mse, acc
 
 
-def train(pre="base"):
-    x_train, y_train = getdata("trainF.txt")
-    x_vali, y_vali = getdata("valiF.txt")
-    x_test, y_test = getdata("testF.txt")
+def train(pre="base",
+          trainF="trainF.txt",
+          valiF="valiF.txt",
+          testF="testF.txt"):
+    x_train, y_train = getdata(trainF)
+    x_vali, y_vali = getdata(valiF)
+    x_test, y_test = getdata(testF)
     #x_train, x_vali, x_test, y_train, y_vali, y_test = getdata(inputf)
     # class_weights = class_weight.compute_class_weight("balanced",
     #                                                  np.unique(y_train),
@@ -307,22 +307,9 @@ def train(pre="base"):
     #print(class_weights)
     stats = {}
     for name in [
-            "vgg16",
-            "vgg19",
-            #"nasnet",
-            "inception",
-            "resnet18",
-            "resnet34",
-            "resnet50",
-            "resnet101",
-            #"wideresnet",
-            "xception",
-            "densenet40",
-            "densenet121",
-            "densenet161",
-            "densenetI169",
-            "densenet201",
-            "densenet264"
+            "vgg16", "vgg19", "inception", "resnet18", "resnet34", "resnet50",
+            "resnet101", "densenet40", "densenet121", "densenet161",
+            "densenetI169", "densenet201", "densenet264"
     ]:
         s = datetime.now()
         cp = "models/%s_%s.h5" % (pre, name)
@@ -339,14 +326,14 @@ def train(pre="base"):
             validation_data=generator(x_vali, y_vali, PARA.batch_size),
             validation_steps=PARA.vali_steps)
         K.clear_session()
-        usedTime = datetime.now() - s
         hist = pd.DataFrame(hist.history)
         hist.to_csv(
             "models/%s_%s_trainningHistroy.txt" % (pre, name),
             sep="\t",
             index_label="epoch")
         #print("------\n" * 3)
-        print(name, cp)
+        usedTime = datetime.now() - s
+        #print(name, cp)
         print("final metrics as following")
         model = load_model(cp, custom_objects={"huber_loss": huber_loss})
         print("train data")
@@ -397,7 +384,7 @@ def test(pref, model, sufix="", save=False):
             continue
         try:
             x.append(line[0])
-            y.append(int(line[1]) + 1)
+            y.append(int(line[1]))
         except:
             continue
     #x = x[:100]
@@ -410,9 +397,9 @@ def test(pref, model, sufix="", save=False):
             mat = readImg(t)
         except:
             continue
-        yp = model.predict(np.array([mat]))[0]
+        yp = model.predict(np.array([mat]))[0][0]
         #print(yp)
-        yp = np.argmax(yp)
+        #yp = np.argmax(yp)
         n = "_".join(t.split("_")[:-1])
         #yp = np.rint(yp)
         if n not in hist:
@@ -450,7 +437,7 @@ def test2(pref, model, sufix="", save=False):
             continue
         try:
             x.append(line[0])
-            y.append(int(line[1]) + 1)
+            y.append(int(line[1]))
         except:
             continue
     model = load_model(model, custom_objects={"huber_loss": huber_loss})
@@ -461,8 +448,8 @@ def test2(pref, model, sufix="", save=False):
             mat = readImg(t)
         except:
             continue
-        yp = model.predict(np.array([mat]))[0]
-        yp = np.argmax(yp)
+        yp = model.predict(np.array([mat]))[0][0]
+        #yp = np.argmax(yp)
         yps.append(yp)
         hist[t] = {"y_pred": yp, "y_true": y[i]}
     mae = mean_absolute_error(y, yps)
@@ -477,11 +464,4 @@ def test2(pref, model, sufix="", save=False):
     K.clear_session()
 
 
-train(pre="SDW_Hubor")
-"""
-test("valiF.txt","models/Hubor_vgg16.h5","Hubor_vgg16_valiF",True)
-test("testF.txt","models/Hubor_vgg16.h5","Hubor_vgg16_testF",True)
-
-test2("valiF.txt","models/Hubor_vgg16.h5","Hubor_vgg16_valiF_2",True)
-test2("testF.txt","models/Hubor_vgg16.h5","Hubor_vgg16_testF_2",True)
-"""
+train(pre="base")

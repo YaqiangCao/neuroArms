@@ -51,7 +51,7 @@ os.environ["CUDA_VISIBLE_DEVICES"] = "0"
 # hyperparameters
 class hyperparameters:
     num_classes = 22
-    batch_size = 32 
+    batch_size = 32
     learning_rate = 3 * 1e-4
     #last dim is channel
     #dims = (992, 1024, 1) #raw size, small image perfomrce better
