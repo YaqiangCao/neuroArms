@@ -3,7 +3,8 @@
 2019-01-24: running time record added
 2019-01-24: model selection added
 2019-01-25: treated as classification problem.
-
+2019-03-20: updated test accuracy etc.
+2019-03-20: early stop added, batch added for caculating acc,mae,mse
 """
 
 #sys
@@ -26,9 +27,10 @@ from keras.models import Sequential, Model
 from keras.layers import Flatten, Dense, Dropout, BatchNormalization
 from sklearn.utils import class_weight
 from sklearn.metrics import accuracy_score, mean_absolute_error, mean_squared_error
+from keras.layers import Flatten, Dense, Dropout, BatchNormalization,Conv2D,Activation,MaxPooling2D
 from sklearn.model_selection import train_test_split
 from keras.utils import multi_gpu_model
-from keras.callbacks import ModelCheckpoint, ReduceLROnPlateau
+from keras.callbacks import ModelCheckpoint, ReduceLROnPlateau,EarlyStopping
 
 from arms.nasnet import NASNet
 #networks
@@ -43,36 +45,74 @@ from arms.densenet import DenseNet40, DenseNet121, DenseNet161, DenseNetI169, De
 #global settings for tensorflow
 os.environ["CUDA_DEVICE_ORDER"] = "PCI_BUS_ID"
 os.environ["TF_CPP_MIN_LOG_LEVEL"] = '3'
-os.environ["CUDA_VISIBLE_DEVICES"] = "0"
-
-#os.environ["CUDA_VISIBLE_DEVICES"] = "3"
+os.environ["CUDA_VISIBLE_DEVICES"] = "2"
 
 
 # hyperparameters
 class hyperparameters:
     num_classes = 22
-    batch_size = 32
-    learning_rate = 3 * 1e-4
+    batch_size = 32 
+    learning_rate =  1e-4
     #last dim is channel
     #dims = (992, 1024, 1) #raw size, small image perfomrce better
     #dims = (496, 512, 1)
     dims = (224, 224, 1)
     weight_decay = 0.0005
-    train_steps = 1560 / 2
-    vali_steps = 156 / 2
-    test_steps = 156 / 2
-    epochs = 10
+    train_steps = 1560 
+    vali_steps = 156 
+    test_steps = 156 
+    epochs = 20
     gpus = 1
-
-
 PARA = hyperparameters()
 
+modelNames = ["base", "vgg16", "vgg19", "inception", "resnet18", "resnet34", "resnet50", "resnet101", "densenet40","densenet121", "densenet161", "densenetI169", "densenet201", "densenet264"]
+ 
 
 def huber_loss(y_true, y_pred):
     return tf.losses.huber_loss(y_true, y_pred)
 
 
+def BASE(input_shape,classes=None,blocks=7,include_top=False):
+    model = Sequential()
+    #bachnormalization
+    model.add(BatchNormalization(name="input_norm", input_shape=input_shape))
+    #block 1
+    for i in range(blocks):
+        #conv/fc -> batchnorm -> activation-> dropout
+        model.add( Conv2D( 2**(3 + i), (3, 3), padding='same', name="block%s_conv1" % i,))
+        model.add(BatchNormalization(name="block%s_norm1" % i))
+        model.add(Activation("relu", name="block%s_active1" % i))
+        model.add( Conv2D( 2**(3 + i), (3, 3), padding='same', name="block%s_conv2" % i,))
+        model.add(BatchNormalization(name="block%s_norm2" % i))
+        model.add(Activation("relu", name="block%s_active2" % i))
+        model.add( Conv2D( 2**(3 + i), (3, 3), padding='same', name="block%s_conv3" % i,))
+        model.add(BatchNormalization(name="block%s_norm3" % i))
+        model.add(Activation("relu", name="block%s_active3" % i))
+        model.add( MaxPooling2D( pool_size=(2, 2), strides=(2, 2), name='block%s_pool' % i))
+    if include_top and classes!=None:
+        #flatten and dropout
+        model.add(Flatten(name="flatten"))
+        #model.add(BatchNormalization(name="flatten_norm"))  #new
+        #model.add(Dense(units=PARA.num_classes**3, activation='relu', name="fc1"))
+        model.add(Dense(units=1024, activation='relu', name="fc1"))
+        model.add(Dropout(0.5))
+        #model.add(BatchNormalization(name="fc1_norm"))  #new
+        #model.add(Dense(units=PARA.num_classes**2, activation='relu', name="fc2"))
+        model.add(Dense(units=1024, activation='relu', name="fc2"))
+        model.add(Dropout(0.5))
+        #model.add(BatchNormalization(name="fc2_norm"))  #new
+        model.add(Dense(units=classes, name="dense_final"))
+        model.add(Activation("softmax", name="dense_activation"))
+    return model
+
+
 def buildModel(name):
+    if name == "base":
+        model = BASE(
+            input_shape=PARA.dims,
+            include_top=True,
+            classes=PARA.num_classes)
+ 
     if name == "vgg16":
         model = VGG16(
             include_top=True,
@@ -88,12 +128,10 @@ def buildModel(name):
             #pooling='avg',
             classes=PARA.num_classes)
     if name == "nasnet":
-        model = NASNet(
-            include_top=True,
-            weights=None,
-            input_shape=PARA.dims,
-            #pooling="avg",
-            classes=PARA.num_classes)
+        model = NASNet( include_top=True, 
+                weights=None, input_shape=PARA.dims, 
+                #pooling="avg", 
+                classes=PARA.num_classes)
     if name == "inception":
         model = InceptionV3(
             include_top=True,
@@ -191,8 +229,9 @@ def getModel(name=None, checkpoint=None):
         model = load_model(checkpoint, )
     else:
         model = buildModel(name)
-    reduce_lr = ReduceLROnPlateau(monitor="val_loss", patience=5)
-    callbacks = [reduce_lr]
+    reduce_lr = ReduceLROnPlateau(monitor="val_loss", patience=2)
+    early_stop = EarlyStopping(monitor='val_loss', patience=5)
+    callbacks = [reduce_lr,early_stop]
     #print(model.summary())
     if checkpoint is not None:
         cp = ModelCheckpoint(
@@ -225,28 +264,22 @@ def readImg(f, norm=True, reshape=True):
 
 def getdata(f):
     x, y = [], []
-    for line in open(f):
-        #do not use augmentation data for testing
-        if "images_aug" in line:
-            continue
+    for line in tqdm(list(open(f))):
         line = line.split("\n")[0].split("\t")
         if len(line) != 2:
             continue
         try:
-            int(line[1])
+            readImg(line[0])
+            line[1] = int(line[1])
         except:
             continue
+        if line[1] == -1:
+            continue
         x.append(line[0])
-        y.append(int(line[1]) + 1)
+        #y.append(line[1] + 1)
+        y.append(line[1])
     x, y = np.array(x), np.array(y)
     return x, y
-    """
-    x_train, x_vali, y_train, y_vali = train_test_split(
-        x, y, test_size=0.2, random_state=123)
-    x_vali, x_test, y_vali, y_test = train_test_split(
-        x_vali, y_vali, test_size=0.5, random_state=123)
-    return x_train, x_vali, x_test, y_train, y_vali, y_test
-    """
 
 
 def generator(features, labels, batch_size):
@@ -267,53 +300,61 @@ def generator(features, labels, batch_size):
         yield batch_features, batch_labels
 
 
-def getStat(model, x, y):
-    #model = load_model(model)
+
+def chunks(l, n):
+    """Yield successive n-sized chunks from l."""
+    for i in range(0, len(l), n):
+        yield l[i:i + n]
+
+
+def getStat(model, x, y,pre):
     yps = []
-    #for i, t in enumerate(tqdm(x)):
-    for t in x:
-        mat = readImg(t)
-        yp = model.predict(np.array([mat]))[0]
-        yp = np.argmax(yp)
-        yps.append(yp)
+    nxs = list(chunks(x,PARA.batch_size))
+    for nx in tqdm(nxs):
+        tmp = []
+        for t in nx:
+            mat = readImg(t)
+            tmp.append(mat)
+        tmp = np.array(tmp)
+        yp = model.predict(tmp)
+        yp = [np.argmax(nt) for nt in yp]
+        yps.extend(list(yp))
     mae = mean_absolute_error(y, yps)
     #print("sklearn metrics accuracy MAE", mae)
     mse = mean_squared_error(y, yps)
     #print("sklearn metrics accuracy MSE", mse)
+    #nyps = [ np.rint(yp) for yp in yps]
     acc = accuracy_score(y, yps)
-    #print("sklearn metrics accuracy acc", acc)
+    rs = pd.Series(data=yps,index=x)
+    rs.to_csv( "%s_pred.txt"%pre,sep="\t") 
     return mae, mse, acc
 
 
 def train(pre="base"):
-    x_train, y_train = getdata("trainF.txt")
+    x_train, y_train = getdata("trainF_overlay.txt")
+    x_vali, y_vali = getdata("valiF_overlay.txt")
+    x_test, y_test = getdata("testF_overlay.txt")
     PARA.num_classes = np.max(y_train) + 1
-    x_vali, y_vali = getdata("valiF.txt")
-    x_test, y_test = getdata("testF.txt")
-    #x_train, x_vali, x_test, y_train, y_vali, y_test = getdata(inputf)
+    PARA.train_steps = len(y_train) / PARA.batch_size
+    PARA.vali_steps = len(y_vali) / PARA.batch_size
+    PARA.test_steps = len(y_test) / PARA.batch_size
     class_weights = class_weight.compute_class_weight("balanced",
                                                       np.unique(y_train),
                                                       y_train)
     #print(x_train.shape, x_vali.shape, x_test.shape)
     #print(class_weights)
     stats = {}
-    for name in [
+    for name in [ "base",
             "vgg16",
             "vgg19",
-            #"nasnet",
             "inception",
             "resnet18",
-            "resnet34",
+            #"resnet34",
             "resnet50",
             "resnet101",
-            #"wideresnet",
             "xception",
             "densenet40",
-            "densenet121",
-            "densenet161",
-            "densenetI169",
-            "densenet201",
-            "densenet264"
+            #"densenet121",
     ]:
         s = datetime.now()
         cp = "models/%s_%s.h5" % (pre, name)
@@ -330,35 +371,20 @@ def train(pre="base"):
             validation_data=generator(x_vali, y_vali, PARA.batch_size),
             validation_steps=PARA.vali_steps)
         K.clear_session()
-        usedTime = datetime.now() - s
         hist = pd.DataFrame(hist.history)
-        hist.to_csv(
-            "models/%s_%s_trainningHistroy.txt" % (pre, name),
-            sep="\t",
-            index_label="epoch")
+        hist.to_csv( "models/%s_%s_trainningHistroy.txt" % (pre, name), sep="\t", index_label="epoch")
+        usedTime = datetime.now() - s
         print(name, cp)
         print("final metrics as following, used time:%s" % usedTime)
         model = load_model(cp)
         print("train data")
-        mtrain = getStat(
-            model,
-            x_train,
-            y_train,
-        )
+        mtrain = getStat( model, x_train, y_train,"predictions/train_%s"%name)
         print("keras metrics: [MAE,MSE,ACC]", mtrain)
         print("vali data")
-        mvali = getStat(
-            model,
-            x_vali,
-            y_vali,
-        )
+        mvali = getStat( model, x_vali, y_vali,"predictions/vali_%s"%name)
         print("keras metrics: [MAE,MSE,ACC]", mvali)
         print("test data")
-        mtest = getStat(
-            model,
-            x_test,
-            y_test,
-        )
+        mtest = getStat( model, x_test, y_test,"predictions/test_%s"%name)
         print("keras metrics:[MAE,MSE,ACC]", mtest)
         stats[name] = {
             "train_mae": mtrain[0],
@@ -378,96 +404,4 @@ def train(pre="base"):
     stats.to_csv(pre + "_model_loss_acc.txt", sep="\t")
 
 
-def test(pref, model, sufix="", save=False):
-    print(pref)
-    x, y = [], []
-    for line in open(pref):
-        line = line.split("\n")[0].split("\t")
-        if len(line) != 2:
-            continue
-        try:
-            x.append(line[0])
-            y.append(int(line[1]))
-        except:
-            continue
-    #x = x[:100]
-    #y = y[:100]
-    model = load_model(model)
-    hist = {}
-    for i, t in enumerate(tqdm(x)):
-        #for i, t in enumerate(x):
-        mat = readImg(t)
-        yp = model.predict(np.array([mat]))[0]
-        #print(yp)
-        yp = np.argmax(yp) - 1
-        n = "_".join(t.split("_")[:-1])
-        #yp = np.rint(yp)
-        if n not in hist:
-            hist[n] = {"y_true": [], "y_pred": []}
-        hist[n]["y_true"].append(y[i])
-        hist[n]["y_pred"].append(yp)
-    yps = []
-    yts = []
-    for key in hist.keys():
-        yp = np.rint(np.mean(hist[key]["y_pred"]))
-        yt = np.rint(np.mean(hist[key]["y_true"]))
-        #print(key,yt,yp)
-        yps.append(yp)
-        yts.append(yt)
-        hist[key]["y_pred_mean"] = yp
-        hist[key]["y_true"] = yt
-    mae = mean_absolute_error(yts, yps)
-    print("sklearn metrics accuracy MAE", mae)
-    mse = mean_squared_error(yts, yps)
-    print("sklearn metrics accuracy MSE", mse)
-    acc = accuracy_score(yts, yps)
-    print("sklearn metrics accuracy acc", acc)
-    hist = pd.DataFrame(hist).T
-    if save:
-        hist.to_csv("%s_prob.txt" % sufix, sep="\t")
-    K.clear_session()
-
-
-def test2(pref, model, sufix="", save=False):
-    print(pref)
-    x, y = [], []
-    for line in open(pref):
-        line = line.split("\n")[0].split("\t")
-        if len(line) != 2:
-            continue
-        try:
-            x.append(line[0])
-            y.append(int(line[1]) + 1)
-        except:
-            continue
-    model = load_model(model)
-    yps = []
-    hist = {}
-    for i, t in enumerate(tqdm(x)):
-        try:
-            mat = readImg(t)
-        except:
-            continue
-        yp = model.predict(np.array([mat]))[0]
-        yp = np.argmax(yp)
-        yps.append(yp)
-        hist[t] = {"y_pred": yp, "y_true": y[i]}
-    mae = mean_absolute_error(y, yps)
-    print("sklearn metrics accuracy MAE", mae)
-    mse = mean_squared_error(y, yps)
-    print("sklearn metrics accuracy MSE", mse)
-    acc = accuracy_score(y, yps)
-    print("sklearn metrics accuracy acc", acc)
-    hist = pd.DataFrame(hist).T
-    if save:
-        hist.to_csv("%s_prob.txt" % sufix, sep="\t")
-    K.clear_session()
-
-
-train(pre="MYL_BCE")
-"""
-test("valiF.txt", "models/BCE_vgg16.h5", "BCE_vgg16_valiF", True)
-test("testF.txt", "models/BCE_vgg16.h5", "BCE_vgg16_testF", True)
-test2("valiF.txt", "models/BCE_vgg16.h5", "BCE_vgg16_valiF_2", True)
-test2("testF.txt", "models/BCE_vgg16.h5", "BCE_vgg16_testF_2", True)
-"""
+train(pre="BCE")
