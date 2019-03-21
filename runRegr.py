@@ -23,12 +23,12 @@ from keras.optimizers import Adam
 from keras.models import load_model
 from keras.models import Sequential, Model
 from keras.layers.advanced_activations import LeakyReLU
-from keras.layers import Flatten, Dense, Dropout, BatchNormalization,Conv2D,Activation,MaxPooling2D
+from keras.layers import Flatten, Dense, Dropout, BatchNormalization, Conv2D, Activation, MaxPooling2D
 from sklearn.utils import class_weight
 from sklearn.metrics import accuracy_score, mean_absolute_error, mean_squared_error
 from sklearn.model_selection import train_test_split
 from keras.utils import multi_gpu_model
-from keras.callbacks import ModelCheckpoint, ReduceLROnPlateau,EarlyStopping
+from keras.callbacks import ModelCheckpoint, ReduceLROnPlateau, EarlyStopping
 from arms.nasnet import NASNet
 #networks
 from arms.vgg19 import VGG19  #img_rows 224,img_cols 224,channel 3,num_classes if fine-tune,else could be adjusted
@@ -49,7 +49,7 @@ os.environ["CUDA_VISIBLE_DEVICES"] = "0"
 # hyperparameters
 class hyperparameters:
     num_classes = 1
-    batch_size = 32 
+    batch_size = 32
     learning_rate = 1e-4
     #last dim is channel
     #dims = (992, 1024, 1) #raw size, small image perfomrce better
@@ -62,33 +62,58 @@ class hyperparameters:
     epochs = 20
     gpus = 2
 
+
 PARA = hyperparameters()
 
-modelNames = ["base", "vgg16", "vgg19", "inception", "resnet18", "resnet34", "resnet50", "resnet101", "densenet40","densenet121", "densenet161", "densenetI169", "densenet201", "densenet264"]
- 
+modelNames = [
+    "base", "vgg16", "vgg19", "inception", "resnet18", "resnet34", "resnet50",
+    "resnet101", "densenet40", "densenet121", "densenet161", "densenetI169",
+    "densenet201", "densenet264"
+]
+
 
 def huber_loss(y_true, y_pred):
     return tf.losses.huber_loss(y_true, y_pred)
 
 
-def BASE(input_shape,classes=None,blocks=7,include_top=False):
+def BASE(input_shape, classes=None, blocks=7, include_top=False):
     model = Sequential()
     #bachnormalization
     model.add(BatchNormalization(name="input_norm", input_shape=input_shape))
     #block 1
     for i in range(blocks):
         #conv/fc -> batchnorm -> activation-> dropout
-        model.add( Conv2D( 2**(3 + i), (3, 3), padding='same', name="block%s_conv1" % i,))
+        model.add(
+            Conv2D(
+                2**(3 + i),
+                (3, 3),
+                padding='same',
+                name="block%s_conv1" % i,
+            ))
         model.add(BatchNormalization(name="block%s_norm1" % i))
         model.add(Activation("relu", name="block%s_active1" % i))
-        model.add( Conv2D( 2**(3 + i), (3, 3), padding='same', name="block%s_conv2" % i,))
+        model.add(
+            Conv2D(
+                2**(3 + i),
+                (3, 3),
+                padding='same',
+                name="block%s_conv2" % i,
+            ))
         model.add(BatchNormalization(name="block%s_norm2" % i))
         model.add(Activation("relu", name="block%s_active2" % i))
-        model.add( Conv2D( 2**(3 + i), (3, 3), padding='same', name="block%s_conv3" % i,))
+        model.add(
+            Conv2D(
+                2**(3 + i),
+                (3, 3),
+                padding='same',
+                name="block%s_conv3" % i,
+            ))
         model.add(BatchNormalization(name="block%s_norm3" % i))
         model.add(Activation("relu", name="block%s_active3" % i))
-        model.add( MaxPooling2D( pool_size=(2, 2), strides=(2, 2), name='block%s_pool' % i))
-    if include_top and classes!=None:
+        model.add(
+            MaxPooling2D(
+                pool_size=(2, 2), strides=(2, 2), name='block%s_pool' % i))
+    if include_top and classes != None:
         #flatten and dropout
         model.add(Flatten(name="flatten"))
         #model.add(BatchNormalization(name="flatten_norm"))  #new
@@ -108,9 +133,7 @@ def BASE(input_shape,classes=None,blocks=7,include_top=False):
 def buildModel(name):
     if name == "base":
         model = BASE(
-            input_shape=PARA.dims,
-            include_top=False,
-            classes=PARA.num_classes)
+            input_shape=PARA.dims, include_top=False, classes=PARA.num_classes)
     if name == "vgg16":
         model = VGG16(
             include_top=False,
@@ -241,7 +264,7 @@ def getModel(name=None, checkpoint=None):
         model = buildModel(name)
     reduce_lr = ReduceLROnPlateau(monitor="val_loss", patience=2)
     early_stop = EarlyStopping(monitor='val_loss', patience=5)
-    callbacks = [reduce_lr,early_stop]
+    callbacks = [reduce_lr, early_stop]
     #print(model.summary())
     if checkpoint is not None:
         cp = ModelCheckpoint(
@@ -308,16 +331,15 @@ def generator(features, labels, batch_size):
         yield batch_features, batch_labels
 
 
-
 def chunks(l, n):
     """Yield successive n-sized chunks from l."""
     for i in range(0, len(l), n):
         yield l[i:i + n]
 
 
-def getStat(model, x, y,pre):
+def getStat(model, x, y, pre):
     yps = []
-    nxs = list(chunks(x,PARA.batch_size))
+    nxs = list(chunks(x, PARA.batch_size))
     for nx in tqdm(nxs):
         tmp = []
         for t in nx:
@@ -331,11 +353,11 @@ def getStat(model, x, y,pre):
     #print("sklearn metrics accuracy MAE", mae)
     mse = mean_squared_error(y, yps)
     #print("sklearn metrics accuracy MSE", mse)
-    nyps = [ np.rint(yp) for yp in yps]
+    nyps = [np.rint(yp) for yp in yps]
     acc = accuracy_score(y, nyps)
     #print("sklearn metrics accuracy acc", acc)
-    rs = pd.Series(data=yps,index=x)
-    rs.to_csv( "%s_pred.txt"%pre,sep="\t") 
+    rs = pd.Series(data=yps, index=x)
+    rs.to_csv("%s_pred.txt" % pre, sep="\t")
     return mae, mse, acc
 
 
@@ -390,13 +412,14 @@ def train(pre="base"):
         print("final metrics as following")
         model = load_model(cp, custom_objects={"huber_loss": huber_loss})
         print("train data")
-        mtrain = getStat( model, x_train, y_train,"predictions/train_%s"%name)
+        mtrain = getStat(model, x_train, y_train,
+                         "predictions/train_%s" % name)
         print("keras metrics: [MAE,MSE,ACC]", mtrain)
         print("vali data")
-        mvali = getStat( model, x_vali, y_vali,"predictions/vali_%s"%name)
+        mvali = getStat(model, x_vali, y_vali, "predictions/vali_%s" % name)
         print("keras metrics: [MAE,MSE,ACC]", mvali)
         print("test data")
-        mtest = getStat( model, x_test, y_test,"predictions/test_%s"%name)
+        mtest = getStat(model, x_test, y_test, "predictions/test_%s" % name)
         print("keras metrics:[MAE,MSE,ACC]", mtest)
         stats[name] = {
             "train_mae": mtrain[0],
@@ -416,6 +439,4 @@ def train(pre="base"):
     stats.to_csv(pre + "_model_loss_acc.txt", sep="\t")
 
 
-
 train(pre="MAE")
-

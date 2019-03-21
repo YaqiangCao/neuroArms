@@ -30,7 +30,7 @@ os.environ["CUDA_VISIBLE_DEVICES"] = "2"
 # hyperparameters
 class hyperparameters:
     num_classes = 1
-    batch_size = 32 
+    batch_size = 32
     learning_rate = 3 * 1e-4
     #last dim is channel
     #dims = (992, 1024, 1) #raw size, small image perfomrce better
@@ -43,11 +43,12 @@ class hyperparameters:
     epochs = 30
     gpus = 2
 
+
 PARA = hyperparameters()
 
 #modelNames = ["base", "vgg16", "vgg19", "inception", "resnet18", "resnet34", "resnet50", "resnet101", "densenet40","densenet121", "densenet161", "densenetI169", "densenet201", "densenet264"]
 modelNames = ["base", "densenet40"]
- 
+
 
 def huber_loss(y_true, y_pred):
     return tf.losses.huber_loss(y_true, y_pred)
@@ -97,9 +98,9 @@ def chunks(l, n):
 
 def getStat(model, x, y):
     yps = []
-    nxs = list(chunks(x,32))
+    nxs = list(chunks(x, 32))
     for nx in tqdm(nxs):
-    #for nx in nxs:
+        #for nx in nxs:
         tmp = []
         for t in nx:
             mat = readImg(t)
@@ -112,30 +113,33 @@ def getStat(model, x, y):
     #print("sklearn metrics accuracy MAE", mae)
     mse = mean_squared_error(y, yps)
     #print("sklearn metrics accuracy MSE", mse)
-    nyps = [ np.rint(yp) for yp in yps]
+    nyps = [np.rint(yp) for yp in yps]
     acc = accuracy_score(y, nyps)
     #print("sklearn metrics accuracy acc", acc)
-    return yps,mae, mse, acc
+    return yps, mae, mse, acc
 
 
-def test(pref="SDW_Hubor",testf="valiF.txt",suffix="valiF"):
-    x,y = getdata(testf)
+def test(pref="SDW_Hubor", testf="valiF.txt", suffix="valiF"):
+    x, y = getdata(testf)
     #rs = {"x":x,"y_true":y}
-    rs = {"y_true":y}
+    rs = {"y_true": y}
     for name in modelNames:
-        cp = "models/%s_%s.h5"%(pref,name)
+        cp = "models/%s_%s.h5" % (pref, name)
         if not os.path.isfile(cp):
             continue
-        print("loading %s"%cp)
+        print("loading %s" % cp)
         model = load_model(cp)
-        yps,mae,mse,acc=getStat(model,x,y)
+        yps, mae, mse, acc = getStat(model, x, y)
         K.clear_session()
-        print("\t".join(["model","MAE","MSE","ACC"]))
-        print("\t".join(list(map(str,[name,mae,mse,acc]))))
+        print("\t".join(["model", "MAE", "MSE", "ACC"]))
+        print("\t".join(list(map(str, [name, mae, mse, acc]))))
         print("\n")
-        rs[name+"_y_pred"] = yps
-    rs = pd.DataFrame(rs,index=x)
-    rs.to_csv("predictions/%s_%s.txt"%(pref,suffix),sep="\t",index_label="imageId")
+        rs[name + "_y_pred"] = yps
+    rs = pd.DataFrame(rs, index=x)
+    rs.to_csv(
+        "predictions/%s_%s.txt" % (pref, suffix),
+        sep="\t",
+        index_label="imageId")
 
 
-test(pref="InitBce",testf="valiF.txt",suffix="valiF")
+test(pref="InitBce", testf="valiF.txt", suffix="valiF")
